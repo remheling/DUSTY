@@ -1,8 +1,8 @@
 import asyncio
 from aiogram import Bot, Dispatcher
 
-from config import BOT_TOKEN
-from handlers import router
+from .config import BOT_TOKEN
+from .handlers import router
 
 
 async def main():
@@ -18,4 +18,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
