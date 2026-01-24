@@ -1,10 +1,10 @@
 from aiogram import Router, Bot, F
 from aiogram.types import Message
 
-from .config import OWNER_ID
-from .storage import load_data, save_data
-from .checker import is_subscribed
-from .keyboards import subscribe_keyboard
+from bot.config import OWNER_ID
+from bot.storage import load_data, save_data
+from bot.checker import is_subscribed
+from bot.keyboards import subscribe_keyboard
 
 router = Router()
 
@@ -94,3 +94,4 @@ async def check_user_message(message: Message, bot: Bot):
             "❌ Чтобы писать в чате, подпишись на каналы:",
             reply_markup=subscribe_keyboard(channels)
         )
+
