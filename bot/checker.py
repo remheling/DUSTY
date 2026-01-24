@@ -12,3 +12,4 @@ async def is_subscribed(bot: Bot, user_id: int, channels: List[str]) -> bool:
             return False
     return True
 
+
