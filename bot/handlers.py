@@ -1,124 +1,75 @@
-from aiogram import Router, Bot, F
+# handlers.py
+
+from aiogram import Router
+from aiogram.filters import Command
 from aiogram.types import Message
 
-from bot.config import OWNER_ID
-from bot.storage import load_data, save_data
-from bot.checker import is_subscribed
-from bot.keyboards import subscribe_keyboard
+from config import OWNER_ID
+from storage import storage
 
 router = Router()
 
 
 def is_owner(message: Message) -> bool:
-    return message.from_user and message.from_user.id == OWNER_ID
+    return message.from_user is not None and message.from_user.id == OWNER_ID
 
 
-# =========================
-# ADMIN COMMANDS
-# =========================
-
-@router.message(F.text.startswith("/set_channels"))
-async def set_channels(message: Message):
+# ➕ Добавить канал в проверку
+@router.message(Command("add_channel"))
+async def add_channel(message: Message):
     if not is_owner(message):
-        await message.delete()
         return
 
     parts = message.text.split()
-    channels = [p for p in parts[1:4] if p.startswith("@")]
-
-    if not channels:
-        await message.answer(
-            "❌ Укажи каналы через пробел:\n"
-            "/set_channels @channel1 @channel2 @channel3"
-        )
+    if len(parts) != 2 or not parts[1].startswith("@"):
+        await message.answer("❌ Используй:\n/add_channel @channel")
         return
 
-    data = load_data()
-    data["channels"] = channels
-    save_data(data)
-
-    await message.answer(
-        "✅ Каналы установлены:\n" +
-        "\n".join(f"• {ch}" for ch in channels)
-    )
+    channel = parts[1]
+    storage.add_channel(channel)
+    await message.answer(f"✅ Канал {channel} добавлен в проверку")
 
 
-@router.message(F.text == "/clear_channels")
+# ➖ Удалить ОДИН канал
+@router.message(Command("del_channel"))
+async def del_channel(message: Message):
+    if not is_owner(message):
+        return
+
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].startswith("@"):
+        await message.answer("❌ Используй:\n/del_channel @channel")
+        return
+
+    channel = parts[1]
+    removed = storage.remove_channel(channel)
+
+    if removed:
+        await message.answer(f"🗑 Канал {channel} удалён из проверки")
+    else:
+        await message.answer(f"⚠️ Канал {channel} не найден в списке")
+
+
+# 🧹 Удалить ВСЕ каналы
+@router.message(Command("clear_channels"))
 async def clear_channels(message: Message):
     if not is_owner(message):
-        await message.delete()
         return
 
-    data = load_data()
-    data["channels"] = []
-    save_data(data)
-
-    await message.answer("✅ Все каналы удалены. Проверка отключена.")
+    storage.clear_channels()
+    await message.answer("🧹 Все каналы удалены из проверки")
 
 
-@router.message(F.text.startswith("/set_interval"))
-async def set_interval(message: Message):
+# 📋 Показать статус проверки
+@router.message(Command("channels"))
+async def show_channels(message: Message):
     if not is_owner(message):
-        await message.delete()
         return
 
-    parts = message.text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        await message.answer("❌ Используй: /set_interval 6 | 12 | 24")
-        return
-
-    hours = int(parts[1])
-    if hours not in (6, 12, 24):
-        await message.answer("❌ Доступно только: 6, 12 или 24")
-        return
-
-    data = load_data()
-    data["check_interval"] = hours
-    save_data(data)
-
-    await message.answer(f"⏱ Интервал проверки установлен: {hours} часов")
-
-
-# =========================
-# USER MESSAGE CHECK
-# =========================
-
-@router.message(F.chat.type.in_({"group", "supergroup"}))
-async def check_user_message(message: Message, bot: Bot):
-    if not message.from_user:
-        return
-
-    # владелец всегда может писать
-    if message.from_user.id == OWNER_ID:
-        return
-
-    data = load_data()
-    channels = data.get("channels", [])
-
-    # если каналы не заданы — ничего не проверяем
+    channels = storage.get_channels()
     if not channels:
+        await message.answer("ℹ️ Проверка отключена — каналы не заданы")
         return
 
-    subscribed = await is_subscribed(bot, message.from_user.id, channels)
-
-    if subscribed:
-        return
-
-    # удаляем сообщение пользователя
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
-    mention = (
-        f'<a href="tg://user?id={message.from_user.id}">'
-        f'{message.from_user.full_name}</a>'
-    )
-
-    channels_text = "\n".join(f"• {ch}" for ch in channels)
-
-    await message.answer(
-        f"❌ {mention}, чтобы писать в чате, подпишись на каналы:\n\n"
-        f"{channels_text}",
-        reply_markup=subscribe_keyboard(channels)
-    )
+    text = "📢 Каналы на проверке:\n" + "\n".join(channels)
+    await message.answer(text)
