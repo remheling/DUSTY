@@ -7,8 +7,6 @@ from aiogram.enums import ParseMode
 
 from config import BOT_TOKEN
 from handlers import router
-dp = Dispatcher()
-dp.include_router(router)
 
 
 async def main():
@@ -28,7 +26,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 
 
 
