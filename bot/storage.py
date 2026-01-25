@@ -1,22 +1,27 @@
-import json
-from pathlib import Path
+# storage.py
 
-DATA_FILE = Path("data.json")
+class ChannelStorage:
+    def __init__(self):
+        self._channels: list[str] = []
 
-DEFAULT_DATA = {
-    "channels": [],
-    "check_interval": 6
-}
+    def add_channel(self, username: str):
+        username = username.lower()
+        if username not in self._channels:
+            self._channels.append(username)
+
+    def remove_channel(self, username: str) -> bool:
+        username = username.lower()
+        if username in self._channels:
+            self._channels.remove(username)
+            return True
+        return False
+
+    def clear_channels(self):
+        self._channels.clear()
+
+    def get_channels(self) -> list[str]:
+        return self._channels.copy()
 
 
-def load_data() -> dict:
-    if not DATA_FILE.exists():
-        save_data(DEFAULT_DATA)
+storage = ChannelStorage()
 
-    with DATA_FILE.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_data(data: dict) -> None:
-    with DATA_FILE.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
