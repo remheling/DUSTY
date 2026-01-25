@@ -1,5 +1,3 @@
-# handlers.py
-
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -11,10 +9,9 @@ router = Router()
 
 
 def is_owner(message: Message) -> bool:
-    return message.from_user is not None and message.from_user.id == OWNER_ID
+    return message.from_user and message.from_user.id == OWNER_ID
 
 
-# ➕ Добавить канал в проверку
 @router.message(Command("add_channel"))
 async def add_channel(message: Message):
     if not is_owner(message):
@@ -25,12 +22,10 @@ async def add_channel(message: Message):
         await message.answer("❌ Используй:\n/add_channel @channel")
         return
 
-    channel = parts[1]
-    storage.add_channel(channel)
-    await message.answer(f"✅ Канал {channel} добавлен в проверку")
+    storage.add_channel(parts[1])
+    await message.answer(f"✅ Канал {parts[1]} добавлен в проверку")
 
 
-# ➖ Удалить ОДИН канал
 @router.message(Command("del_channel"))
 async def del_channel(message: Message):
     if not is_owner(message):
@@ -41,16 +36,13 @@ async def del_channel(message: Message):
         await message.answer("❌ Используй:\n/del_channel @channel")
         return
 
-    channel = parts[1]
-    removed = storage.remove_channel(channel)
-
+    removed = storage.remove_channel(parts[1])
     if removed:
-        await message.answer(f"🗑 Канал {channel} удалён из проверки")
+        await message.answer(f"🗑 Канал {parts[1]} удалён из проверки")
     else:
-        await message.answer(f"⚠️ Канал {channel} не найден в списке")
+        await message.answer("⚠️ Канал не найден")
 
 
-# 🧹 Удалить ВСЕ каналы
 @router.message(Command("clear_channels"))
 async def clear_channels(message: Message):
     if not is_owner(message):
@@ -60,7 +52,6 @@ async def clear_channels(message: Message):
     await message.answer("🧹 Все каналы удалены из проверки")
 
 
-# 📋 Показать статус проверки
 @router.message(Command("channels"))
 async def show_channels(message: Message):
     if not is_owner(message):
@@ -71,8 +62,10 @@ async def show_channels(message: Message):
         await message.answer("ℹ️ Проверка отключена — каналы не заданы")
         return
 
-    text = "📢 Каналы на проверке:\n" + "\n".join(channels)
+    text = "📢 Каналы на проверке:\n"
+    text += "\n".join(f"@{c}" for c in channels)
     await message.answer(text)
+
 
 
 
