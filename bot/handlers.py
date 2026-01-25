@@ -73,3 +73,8 @@ async def show_channels(message: Message):
 
     text = "📢 Каналы на проверке:\n" + "\n".join(channels)
     await message.answer(text)
+
+@router.message()
+async def debug_any(message: Message):
+    await message.answer("✅ Я жив")
+
