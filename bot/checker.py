@@ -1,15 +1,19 @@
 from aiogram import Bot
-from typing import List
+from aiogram.exceptions import TelegramBadRequest
+from storage import storage
 
 
-async def is_subscribed(bot: Bot, user_id: int, channels: List[str]) -> bool:
-    for channel in channels:
+async def get_not_subscribed(bot: Bot, user_id: int) -> list[str]:
+    not_subscribed = []
+
+    for channel in storage.get_channels():
         try:
             member = await bot.get_chat_member(f"@{channel}", user_id)
-            if member.status in ("left", "kicked"):
-                return False
-        except Exception:
-            return False
-    return True
+            if member.status not in ("member", "administrator", "creator"):
+                not_subscribed.append(channel)
+        except TelegramBadRequest:
+            not_subscribed.append(channel)
+
+    return not_subscribed
 
 
