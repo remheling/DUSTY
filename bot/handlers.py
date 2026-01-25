@@ -9,15 +9,16 @@ router = Router()
 
 
 def is_owner(message: Message) -> bool:
-    return message.from_user and message.from_user.id == OWNER_ID
+    return message.from_user and message.from_user.id == int(OWNER_ID)
 
 
 @router.message(Command("add_channel"))
 async def add_channel(message: Message):
     if not is_owner(message):
+        await message.answer("⛔ Нет прав")
         return
 
-    parts = message.text.split()
+    parts = message.text.split(maxsplit=1)
     if len(parts) != 2 or not parts[1].startswith("@"):
         await message.answer("❌ Используй:\n/add_channel @channel")
         return
@@ -29,9 +30,10 @@ async def add_channel(message: Message):
 @router.message(Command("del_channel"))
 async def del_channel(message: Message):
     if not is_owner(message):
+        await message.answer("⛔ Нет прав")
         return
 
-    parts = message.text.split()
+    parts = message.text.split(maxsplit=1)
     if len(parts) != 2 or not parts[1].startswith("@"):
         await message.answer("❌ Используй:\n/del_channel @channel")
         return
@@ -46,6 +48,7 @@ async def del_channel(message: Message):
 @router.message(Command("clear_channels"))
 async def clear_channels(message: Message):
     if not is_owner(message):
+        await message.answer("⛔ Нет прав")
         return
 
     storage.clear_channels()
@@ -55,6 +58,7 @@ async def clear_channels(message: Message):
 @router.message(Command("channels"))
 async def show_channels(message: Message):
     if not is_owner(message):
+        await message.answer("⛔ Нет прав")
         return
 
     channels = storage.get_channels()
@@ -63,9 +67,8 @@ async def show_channels(message: Message):
         return
 
     text = "📢 Каналы на проверке:\n"
-    text += "\n".join(f"@{c}" for c in channels)
+    text += "\n".join(channels)
     await message.answer(text)
-
 
 
 
