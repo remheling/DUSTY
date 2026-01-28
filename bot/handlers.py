@@ -1,3 +1,12 @@
+from aiogram.filters import Command
+from aiogram.types import Message
+
+@router.message(Command())
+async def block_commands_from_users(message: Message):
+    if message.chat.type != "private" and message.from_user.id != OWNER_ID:
+        await message.delete()
+        return
+
 from aiogram import Router, Bot
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -13,14 +22,12 @@ def is_owner(message: Message) -> bool:
     return message.from_user and message.from_user.id == OWNER_ID
 
 
-# 🚫 БЛОК ЛЮБЫХ КОМАНД НЕ-ВЛАДЕЛЬЦА В ГРУППЕ
 @router.message(Command())
 async def block чужих_commands(message: Message):
     if message.chat.type != "private" and not is_owner(message):
         await message.delete()
 
 
-# ➕ ADD CHANNEL
 @router.message(Command("add_channel"))
 async def add_channel(message: Message):
     if not is_owner(message):
@@ -35,7 +42,6 @@ async def add_channel(message: Message):
     await message.answer(f"Канал {parts[1]} добавлен")
 
 
-# ➖ DEL CHANNEL
 @router.message(Command("del_channel"))
 async def del_channel(message: Message):
     if not is_owner(message):
@@ -62,7 +68,6 @@ async def clear_channels(message: Message):
     await message.answer("Все каналы удалены")
 
 
-# 📋 STATUS
 @router.message(Command("channels"))
 async def channels(message: Message):
     if not is_owner(message):
@@ -78,7 +83,6 @@ async def channels(message: Message):
     )
 
 
-# 🛡 ОСНОВНОЙ GUARD — УДАЛЯЕТ ВСЁ
 @router.message()
 async def guard(message: Message, bot: Bot):
     if message.chat.type == "private":
@@ -98,6 +102,7 @@ async def guard(message: Message, bot: Bot):
         reply_markup=subscribe_kb(bad_channel),
         disable_web_page_preview=True
     )
+
 
 
 
