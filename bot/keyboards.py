@@ -1,14 +1,12 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from storage import storage
 
-def subscribe_kb(channel: str):
+def subscribe_kb():
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Подписаться",
-                    url=f"https://t.me/{channel.lstrip('@')}"
-                )
-            ]
+            [InlineKeyboardButton(text=ch, url=f"https://t.me/{ch.lstrip('@')}")]
+            for ch in storage.get_channels()
         ]
     )
+
 
