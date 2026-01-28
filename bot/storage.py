@@ -1,18 +1,25 @@
 class Storage:
     def __init__(self):
-        self.channels: set[str] = set()
+        self.channels: list[str] = []
 
     def add_channel(self, channel: str):
-        self.channels.add(channel.lstrip("@"))
+        if channel not in self.channels:
+            self.channels.append(channel)
 
     def remove_channel(self, channel: str) -> bool:
-        return self.channels.discard(channel.lstrip("@")) is None
+        if channel in self.channels:
+            self.channels.remove(channel)
+            return True
+        return False
 
-    def clear(self):
+    def clear_channels(self):
         self.channels.clear()
 
-    def get_all(self) -> list[str]:
-        return list(self.channels)
+    def get_channels(self) -> list[str]:
+        return self.channels.copy()
+
+    def has_channels(self) -> bool:
+        return len(self.channels) > 0
 
 
 storage = Storage()
