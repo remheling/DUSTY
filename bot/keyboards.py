@@ -1,10 +1,9 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from typing import List
 
 
-def subscribe_keyboard(channels: List[str]) -> InlineKeyboardMarkup:
+def subscribe_keyboard(channels: list[str]) -> InlineKeyboardMarkup:
     buttons = [
-        [InlineKeyboardButton(text="Подписаться", url=f"https://t.me/{ch}")]
+        [InlineKeyboardButton(text=f"Подписаться {ch}", url=f"https://t.me/{ch[1:]}")]
         for ch in channels
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
