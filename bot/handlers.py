@@ -1,45 +1,47 @@
-from aiogram.filters import Command
-from aiogram.types import Message
-
-@router.message(Command())
-async def block_commands_from_users(message: Message):
-    if message.chat.type != "private" and message.from_user.id != OWNER_ID:
-        await message.delete()
-        return
-
-from aiogram import Router, Bot
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 from config import OWNER_ID
 from storage import storage
 from checker import is_subscribed
 from keyboards import subscribe_kb
+from utils import parse_time
 
 router = Router()
 
+def is_owner(m: Message):
+    return m.from_user and m.from_user.id == OWNER_ID
 
-def is_owner(message: Message) -> bool:
-    return message.from_user and message.from_user.id == OWNER_ID
 
-
-@router.message(Command())
-async def block чужих_commands(message: Message):
-    if message.chat.type != "private" and not is_owner(message):
-        await message.delete()
+@router.message(Command("start"))
+async def start_cmd(message: Message):
+    if message.chat.type == "private":
+        await message.answer(
+            "Бот удаляет сообщения пользователей без подписки на обязательные каналы."
+        )
 
 
 @router.message(Command("add_channel"))
-async def add_channel(message: Message):
+async def add_channels(message: Message):
     if not is_owner(message):
         return
 
-    parts = message.text.split(maxsplit=1)
-    if len(parts) != 2 or not parts[1].startswith("@"):
-        await message.answer("Используй: /add_channel @channel")
+    parts = message.text.split()[1:]
+    for ch in parts:
+        if ch.startswith("@"):
+            storage.add_channel(ch)
+
+    await message.answer("Каналы добавлены.")
+
+
+@router.message(Command("add_one"))
+async def add_one(message: Message):
+    if not is_owner(message):
         return
 
-    storage.add_channel(parts[1])
-    await message.answer(f"Канал {parts[1]} добавлен")
+    ch = message.text.split()[1]
+    storage.add_channel(ch)
+    await message.answer("Канал добавлен.")
 
 
 @router.message(Command("del_channel"))
@@ -47,61 +49,42 @@ async def del_channel(message: Message):
     if not is_owner(message):
         return
 
-    parts = message.text.split(maxsplit=1)
-    if len(parts) != 2:
-        await message.answer("Используй: /del_channel @channel")
-        return
-
-    if storage.remove_channel(parts[1]):
-        await message.answer(f"Канал {parts[1]} удалён")
-    else:
-        await message.answer("Канал не найден")
+    parts = message.text.split()
+    ttl = parse_time(parts[2])
+    storage.add_channel(parts[1], ttl)
+    await message.answer("Канал будет удалён автоматически.")
 
 
-# 🧹 CLEAR
-@router.message(Command("clear_channels"))
-async def clear_channels(message: Message):
+@router.message(Command("status"))
+async def status(message: Message):
     if not is_owner(message):
         return
 
-    storage.clear_channels()
-    await message.answer("Все каналы удалены")
-
-
-@router.message(Command("channels"))
-async def channels(message: Message):
-    if not is_owner(message):
-        return
-
-    channels = storage.get_channels()
-    if not channels:
-        await message.answer("Проверка отключена")
-        return
-
-    await message.answer(
-        "Каналы на проверке:\n" + "\n".join(channels)
-    )
+    ch = storage.get_channels()
+    await message.answer("\n".join(ch) if ch else "Проверка выключена.")
 
 
 @router.message()
-async def guard(message: Message, bot: Bot):
-    if message.chat.type == "private":
+async def guard(message: Message, bot):
+    if message.chat.type not in ("group", "supergroup"):
         return
 
     if is_owner(message):
         return
 
-    ok, bad_channel = await is_subscribed(bot, message.from_user.id)
-    if ok:
+    if await is_subscribed(bot, message.from_user.id):
         return
 
     await message.delete()
 
-    await message.answer(
-        f"@{message.from_user.username}, подпишитесь на канал",
-        reply_markup=subscribe_kb(bad_channel),
-        disable_web_page_preview=True
+    mention = message.from_user.mention_html()
+    text = (
+        f"{mention}, подпишитесь на обязательные каналы:\n"
+        + "\n".join(storage.get_channels())
     )
+
+    warn = await message.answer(text, reply_markup=subscribe_kb())
+    await warn.delete(delay=storage.bot_msg_ttl)
 
 
 
