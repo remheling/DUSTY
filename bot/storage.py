@@ -2,26 +2,36 @@ import time
 
 class Storage:
     def __init__(self):
-        self.channels = {}  # channel -> expire_ts | None
-        self.bot_msg_ttl = 30
+        self.channels = {}  # @channel: expire_ts or None
+        self.bot_msg_ttl = 30  # seconds
 
-    def add_channel(self, channel: str, ttl: int | None = None):
-        expire = time.time() + ttl if ttl else None
-        self.channels[channel] = expire
+    def add_channel(self, channel):
+        self.channels[channel] = None
 
-    def remove_channel(self, channel: str):
-        self.channels.pop(channel, None)
+    def remove_channel(self, channel):
+        return self.channels.pop(channel, None)
 
-    def cleanup(self):
+    def set_channel_timer(self, channel, seconds):
+        if channel in self.channels:
+            self.channels[channel] = time.time() + seconds
+            return True
+        return False
+
+    def get_active_channels(self):
         now = time.time()
-        for ch, exp in list(self.channels.items()):
-            if exp and exp <= now:
-                del self.channels[ch]
+        to_delete = []
+        result = []
 
-    def get_channels(self):
-        self.cleanup()
-        return list(self.channels.keys())
+        for ch, expire in self.channels.items():
+            if expire and expire < now:
+                to_delete.append(ch)
+            else:
+                result.append(ch)
 
+        for ch in to_delete:
+            del self.channels[ch]
+
+        return result
 
 storage = Storage()
 
