@@ -6,4 +6,3 @@ def parse_time(value: str) -> int | None:
     if value.endswith("h"):
         return int(value[:-1]) * 3600
     return None
-
