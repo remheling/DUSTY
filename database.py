@@ -58,7 +58,8 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
                     username TEXT,
-                    type TEXT CHECK(type IN ('обычный', 'глобальный'))
+                    type TEXT CHECK(type IN ('обычный', 'глобальный')),
+                    until TIMESTAMP
                 )
             ''')
             c.execute('''
