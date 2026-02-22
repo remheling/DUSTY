@@ -1,6 +1,7 @@
 import sqlite3
 import threading
 from contextlib import contextmanager
+from config import OWNER_ID
 
 DB_NAME = "bot.db"
 
@@ -48,7 +49,8 @@ class Database:
                 CREATE TABLE IF NOT EXISTS channels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT,
-                    group_id INTEGER
+                    group_id INTEGER,
+                    until TIMESTAMP
                 )
             ''')
             c.execute('''
