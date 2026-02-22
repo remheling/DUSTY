@@ -2,6 +2,7 @@ from telebot import TeleBot
 from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from database import db
 from config import OWNER_ID, MAX_CHANNELS
+from datetime import datetime, timedelta
 import time
 import threading
 
@@ -24,10 +25,7 @@ def is_admin_or_owner(bot, user_id, chat_id):
 
 def is_vip(user_id):
     with db.cur() as c:
-        c.execute('SELECT * FROM vip WHERE user_id = ? AND type = "глобальный"', (user_id,))
-        if c.fetchone():
-            return True
-        c.execute('SELECT * FROM vip WHERE user_id = ? AND type = "обычный"', (user_id,))
+        c.execute('SELECT * FROM vip WHERE user_id = ?', (user_id,))
         return c.fetchone() is not None
 
 def is_subscribed(bot, user_id, channels):
@@ -113,6 +111,119 @@ def register(bot: TeleBot):
             c.execute('INSERT INTO channels (name, group_id) VALUES (?, ?)', (ch, gid))
         bot.reply_to(m, f"✅ Канал {ch} добавлен")
     
+    @bot.message_handler(commands=['time'])
+    def set_time(m: Message):
+        """Установить время проверки: /time 6, /time 12, /time 24"""
+        if m.from_user.id != OWNER_ID:
+            return
+        args = m.text.split()
+        if len(args) < 2:
+            bot.reply_to(m, "❌ Используй: /time 6, /time 12, /time 24")
+            return
+        
+        gid = get_selected()
+        if not gid:
+            bot.reply_to(m, "❌ Сначала выбери группу: /groups")
+            return
+        
+        with db.cur() as c:
+            c.execute('SELECT id, name FROM channels WHERE group_id = ?', (gid,))
+            channels = c.fetchall()
+        
+        if not channels:
+            bot.reply_to(m, "❌ В этой группе нет каналов")
+            return
+        
+        try:
+            hours = int(args[1])
+            if hours not in [6, 12, 24]:
+                bot.reply_to(m, "❌ Только 6, 12 или 24 часа")
+                return
+        except:
+            bot.reply_to(m, "❌ Используй: /time 6, /time 12, /time 24")
+            return
+        
+        until = datetime.now() + timedelta(hours=hours)
+        until_str = until.strftime("%d.%m.%Y %H:%M")
+        
+        with db.cur() as c:
+            for ch in channels:
+                c.execute('UPDATE channels SET until = ? WHERE id = ?', (until, ch[0]))
+        
+        bot.reply_to(m, f"✅ Время проверки для {len(channels)} каналов установлено на {hours} часов (до {until_str})")
+    
+    @bot.message_handler(commands=['status'])
+    def status(m: Message):
+        """Показать общий статус (группа + VIP)"""
+        if m.from_user.id != OWNER_ID:
+            return
+        gid = get_selected()
+        if not gid:
+            bot.reply_to(m, "❌ Сначала выбери группу: /groups")
+            return
+        
+        now = datetime.now()
+        text = f"📊 **ОБЩИЙ СТАТУС**\n\n"
+        
+        # ===== СТАТУС ГРУППЫ =====
+        with db.cur() as c:
+            c.execute('SELECT title FROM groups WHERE id = ?', (gid,))
+            group = c.fetchone()
+            
+            c.execute('SELECT name, until FROM channels WHERE group_id = ?', (gid,))
+            channels = c.fetchall()
+        
+        if group:
+            text += f"👥 **Группа:** {group[0]}\n"
+            text += f"📢 **Каналы ({len(channels)}/{MAX_CHANNELS}):**\n"
+            
+            for ch in channels:
+                name = ch[0]
+                until = ch[1]
+                
+                if until:
+                    until_time = datetime.fromisoformat(until) if isinstance(until, str) else until
+                    if until_time > now:
+                        days_left = until_time - now
+                        hours = int(days_left.total_seconds() / 3600)
+                        minutes = int((days_left.total_seconds() % 3600) / 60)
+                        text += f"   • {name} (осталось {hours}ч {minutes}м)\n"
+                    else:
+                        text += f"   • {name} (⚠️ истекло)\n"
+                else:
+                    text += f"   • {name} (∞ без срока)\n"
+        
+        # ===== СТАТУС VIP =====
+        with db.cur() as c:
+            c.execute('SELECT username, type, until FROM vip ORDER BY until')
+            vips = c.fetchall()
+        
+        text += f"\n👑 **VIP пользователи ({len(vips)}):**\n"
+        
+        if vips:
+            for v in vips:
+                username = v[0]
+                vip_type = v[1]
+                until = v[2]
+                
+                if until:
+                    until_time = datetime.fromisoformat(until) if isinstance(until, str) else until
+                    if until_time > now:
+                        days_left = (until_time - now).days
+                        if days_left > 0:
+                            text += f"   • @{username} - {vip_type} (осталось {days_left} дн)\n"
+                        else:
+                            hours_left = int((until_time - now).total_seconds() / 3600)
+                            text += f"   • @{username} - {vip_type} (осталось {hours_left} ч)\n"
+                    else:
+                        text += f"   • @{username} - {vip_type} (⚠️ истек)\n"
+                else:
+                    text += f"   • @{username} - {vip_type} (∞ без срока)\n"
+        else:
+            text += "   • Нет VIP пользователей\n"
+        
+        bot.reply_to(m, text, parse_mode="Markdown")
+    
     @bot.message_handler(commands=['del'])
     def delete(m: Message):
         if m.from_user.id != OWNER_ID:
@@ -142,26 +253,43 @@ def register(bot: TeleBot):
             bot.reply_to(m, "❌ Сначала выбери группу")
             return
         with db.cur() as c:
-            c.execute('SELECT name FROM channels WHERE group_id = ?', (gid,))
+            c.execute('SELECT name, until FROM channels WHERE group_id = ?', (gid,))
             ch = c.fetchall()
         if not ch:
             bot.reply_to(m, "📢 Нет каналов")
             return
+        
+        now = datetime.now()
         text = "📢 **Каналы:**\n"
         for c in ch:
-            text += f"   • {c[0]}\n"
+            name = c[0]
+            until = c[1]
+            
+            if until:
+                until_time = datetime.fromisoformat(until) if isinstance(until, str) else until
+                if until_time > now:
+                    hours_left = int((until_time - now).total_seconds() / 3600)
+                    minutes_left = int(((until_time - now).total_seconds() % 3600) / 60)
+                    text += f"   • {name} (осталось {hours_left}ч {minutes_left}м)\n"
+                else:
+                    text += f"   • {name} (⚠️ истек)\n"
+            else:
+                text += f"   • {name}\n"
+        
         bot.reply_to(m, text, parse_mode="Markdown")
     
     # ---------- КОМАНДЫ ДЛЯ ВЛАДЕЛЬЦА (УПРАВЛЕНИЕ VIP) ----------
     
     @bot.message_handler(commands=['vip'])
     def add_vip(m: Message):
+        """Добавить обычный VIP: /vip @user 7d / /vip @user 30d"""
         if m.from_user.id != OWNER_ID:
             return
         args = m.text.split()
         if len(args) < 2:
-            bot.reply_to(m, "❌ Используй: /vip @user")
+            bot.reply_to(m, "❌ Используй: /vip @user 7d или /vip @user 30d")
             return
+        
         username = args[1].replace('@', '')
         try:
             user = bot.get_chat(f"@{username}")
@@ -170,23 +298,46 @@ def register(bot: TeleBot):
             bot.reply_to(m, "❌ Пользователь не найден")
             return
         
+        # Проверяем наличие времени
+        until = None
+        if len(args) >= 3:
+            time_str = args[2].lower()
+            if time_str == '7d':
+                until = datetime.now() + timedelta(days=7)
+            elif time_str == '30d':
+                until = datetime.now() + timedelta(days=30)
+            else:
+                bot.reply_to(m, "❌ Только 7d или 30d")
+                return
+        
         with db.cur() as c:
-            c.execute('INSERT OR REPLACE INTO vip (user_id, username, type) VALUES (?, ?, "обычный")', 
-                     (uid, username))
-        bot.reply_to(m, f"✅ Обычный VIP для @{username}")
-        try:
-            bot.send_message(uid, "🎉 Вам выдан обычный VIP!")
-        except:
-            pass
+            c.execute('INSERT OR REPLACE INTO vip (user_id, username, type, until) VALUES (?, ?, "обычный", ?)', 
+                     (uid, username, until))
+        
+        if until:
+            until_str = until.strftime("%d.%m.%Y")
+            bot.reply_to(m, f"✅ Обычный VIP для @{username} до {until_str}")
+            try:
+                bot.send_message(uid, f"🎉 Вам выдан обычный VIP до {until_str}!")
+            except:
+                pass
+        else:
+            bot.reply_to(m, f"✅ Обычный VIP для @{username} (бессрочно)")
+            try:
+                bot.send_message(uid, "🎉 Вам выдан обычный VIP (бессрочно)!")
+            except:
+                pass
     
     @bot.message_handler(commands=['vipglobal'])
     def add_vip_global(m: Message):
+        """Добавить глобальный VIP: /vipglobal @user 7d / /vipglobal @user 30d"""
         if m.from_user.id != OWNER_ID:
             return
         args = m.text.split()
         if len(args) < 2:
-            bot.reply_to(m, "❌ Используй: /vipglobal @user")
+            bot.reply_to(m, "❌ Используй: /vipglobal @user 7d или /vipglobal @user 30d")
             return
+        
         username = args[1].replace('@', '')
         try:
             user = bot.get_chat(f"@{username}")
@@ -195,17 +346,39 @@ def register(bot: TeleBot):
             bot.reply_to(m, "❌ Пользователь не найден")
             return
         
+        # Проверяем наличие времени
+        until = None
+        if len(args) >= 3:
+            time_str = args[2].lower()
+            if time_str == '7d':
+                until = datetime.now() + timedelta(days=7)
+            elif time_str == '30d':
+                until = datetime.now() + timedelta(days=30)
+            else:
+                bot.reply_to(m, "❌ Только 7d или 30d")
+                return
+        
         with db.cur() as c:
-            c.execute('INSERT OR REPLACE INTO vip (user_id, username, type) VALUES (?, ?, "глобальный")', 
-                     (uid, username))
-        bot.reply_to(m, f"✅ Глобальный VIP для @{username}")
-        try:
-            bot.send_message(uid, "👑 Вам выдан глобальный VIP!")
-        except:
-            pass
+            c.execute('INSERT OR REPLACE INTO vip (user_id, username, type, until) VALUES (?, ?, "глобальный", ?)', 
+                     (uid, username, until))
+        
+        if until:
+            until_str = until.strftime("%d.%m.%Y")
+            bot.reply_to(m, f"✅ Глобальный VIP для @{username} до {until_str}")
+            try:
+                bot.send_message(uid, f"👑 Вам выдан глобальный VIP до {until_str}!")
+            except:
+                pass
+        else:
+            bot.reply_to(m, f"✅ Глобальный VIP для @{username} (бессрочно)")
+            try:
+                bot.send_message(uid, "👑 Вам выдан глобальный VIP (бессрочно)!")
+            except:
+                pass
     
     @bot.message_handler(commands=['unvip'])
     def remove_vip(m: Message):
+        """Удалить VIP: /unvip @user"""
         if m.from_user.id != OWNER_ID:
             return
         args = m.text.split()
@@ -222,17 +395,33 @@ def register(bot: TeleBot):
     
     @bot.message_handler(commands=['vip_list'])
     def vip_list(m: Message):
+        """Список всех VIP"""
         if m.from_user.id != OWNER_ID:
             return
         with db.cur() as c:
-            c.execute('SELECT username, type FROM vip')
+            c.execute('SELECT username, type, until FROM vip ORDER BY until')
             vips = c.fetchall()
         if not vips:
             bot.reply_to(m, "📋 Нет VIP пользователей")
             return
+        
+        now = datetime.now()
         text = "👑 **VIP пользователи:**\n\n"
         for v in vips:
-            text += f"• @{v[0]} - {v[1]}\n"
+            username = v[0]
+            vip_type = v[1]
+            until = v[2]
+            
+            if until:
+                until_time = datetime.fromisoformat(until) if isinstance(until, str) else until
+                if until_time > now:
+                    days_left = (until_time - now).days
+                    text += f"• @{username} - {vip_type} (осталось {days_left} дн)\n"
+                else:
+                    text += f"• @{username} - {vip_type} (⚠️ истек)\n"
+            else:
+                text += f"• @{username} - {vip_type} (∞)\n"
+        
         bot.reply_to(m, text, parse_mode="Markdown")
     
     # ---------- КОМАНДЫ ДЛЯ ВСЕХ ----------
@@ -252,11 +441,13 @@ def register(bot: TeleBot):
 🔹 **Обычный VIP**
    • Освобождение от проверки в 1 группе
    • Доступ к конкурсам
+   • Сроки: 7 или 30 дней
 
 🔸 **Глобальный VIP**
    • Освобождение от проверки ВО ВСЕХ группах
    • Иммунитет к мутам
    • Безлимит на медиа
+   • Сроки: 7 или 30 дней
 
 👑 **Получить:** @AerenRem"""
         
@@ -284,21 +475,35 @@ def register(bot: TeleBot):
             return
         
         with db.cur() as c:
-            c.execute('SELECT name FROM channels WHERE group_id = ?', (m.chat.id,))
-            channels = [r[0] for r in c.fetchall()]
+            c.execute('SELECT name, until FROM channels WHERE group_id = ?', (m.chat.id,))
+            channels_data = c.fetchall()
         
-        if not channels:
+        if not channels_data:
             return
         
-        if not is_subscribed(bot, m.from_user.id, channels):
+        now = datetime.now()
+        active_channels = []
+        for ch in channels_data:
+            name = ch[0]
+            until = ch[1]
+            if until:
+                until_time = datetime.fromisoformat(until) if isinstance(until, str) else until
+                if until_time <= now:
+                    continue
+            active_channels.append(name)
+        
+        if not active_channels:
+            return
+        
+        if not is_subscribed(bot, m.from_user.id, active_channels):
             try:
                 bot.delete_message(m.chat.id, m.message_id)
             except:
                 pass
             
             name = m.from_user.username or m.from_user.first_name
-            text = f"@{name}, ты не подписан на каналы: {', '.join(channels)}\nПодпишись, чтобы писать!"
-            kb = sub_keyboard(channels)
+            text = f"@{name}, ты не подписан на каналы: {', '.join(active_channels)}\nПодпишись, чтобы писать!"
+            kb = sub_keyboard(active_channels)
             
             sent = bot.send_message(m.chat.id, text, reply_markup=kb)
             
@@ -321,11 +526,13 @@ def register(bot: TeleBot):
 🔹 **Обычный VIP**
    • Освобождение от проверки в 1 группе
    • Доступ к конкурсам
+   • Сроки: 7 или 30 дней
 
 🔸 **Глобальный VIP**
    • Освобождение от проверки ВО ВСЕХ группах
    • Иммунитет к мутам
    • Безлимит на медиа
+   • Сроки: 7 или 30 дней
 
 👑 **Получить:** @AerenRem"""
             
